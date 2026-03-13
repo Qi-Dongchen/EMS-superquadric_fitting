@@ -8,18 +8,19 @@ from sklearn.cluster import DBSCAN
 
 def hierarchical_ems(
     point,
-    OutlierRatio=0.9,           # prior outlier probability [0, 1) (default: 0.1)
+    OutlierRatio=0.5,           # prior outlier probability [0, 1) (default: 0.1)
     MaxIterationEM=20,           # maximum number of EM iterations (default: 20)
     ToleranceEM=1e-3,            # absolute tolerance of EM (default: 1e-3)
     RelativeToleranceEM=2e-1,    # relative tolerance of EM (default: 1e-1)
     MaxOptiIterations=2,         # maximum number of optimization iterations per M (default: 2)
-    Sigma=0.3,                   # initial sigma^2 (default: 0 - auto generate)
+    Sigma=0.05,                   # initial sigma^2 (default: 0 - auto generate)
     MaxiSwitch=2,                # maximum number of switches allowed (default: 2)
     AdaptiveUpperBound=True,    # Introduce adaptive upper bound to restrict the volume of SQ (default: false)
     Rescale=False,                # normalize the input point cloud (default: true)
-    MaxLayer=5,                  # maximum depth
-    Eps=1.7,                    # IMPORTANT: varies based on the size of the input pointcoud (DBScan parameter)
+    MaxLayer=3,                  # maximum depth
+    Eps=3.0,                    # IMPORTANT: varies based on the size of the input pointcoud (DBScan parameter)
     MinPoints=60,               # DBScan parameter required minimum points
+    InlierThreshold=0.3,        # posterior probability threshold for inlier/outlier split (default: 0.1)
 ):
     # Auto-scale Eps based on point cloud size if not provided
     if Eps is None:
@@ -57,8 +58,8 @@ def hierarchical_ems(
                 continue
             point_previous = point_seg[h][c]
             list_quadrics.append(x_raw)
-            outlier = point_seg[h][c][p_raw < 0.1, :]
-            point_seg[h][c] = point_seg[h][c][p_raw > 0.1, :]
+            outlier = point_seg[h][c][p_raw < InlierThreshold, :]
+            point_seg[h][c] = point_seg[h][c][p_raw > InlierThreshold, :]
             if np.sum(p_raw) < (0.8 * len(point_previous)):
                 clustering = DBSCAN(eps=Eps, min_samples=MinPoints).fit(outlier)
                 labels = list(set(clustering.labels_))
@@ -115,7 +116,7 @@ def main(argv):
     if args.export:
         from pathlib import Path
         ply_stem = Path(args.path_to_data).stem
-        output_dir = Path(__file__).resolve().parent.parent / "data" / ply_stem
+        output_dir = Path(__file__).resolve().parent.parent / "assets" / ply_stem
         save_superquadrics(list_quadrics, str(output_dir))
 
     if args.visualize:

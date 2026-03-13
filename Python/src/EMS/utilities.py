@@ -185,6 +185,7 @@ def visualize(geometries):
 
 
 def save_superquadrics(list_quadrics, output_dir):
+    from scipy.spatial.transform import Rotation as R
     os.makedirs(output_dir, exist_ok=True)
     data = []
     for i, sq in enumerate(list_quadrics):
@@ -196,7 +197,28 @@ def save_superquadrics(list_quadrics, output_dir):
             "translation": sq.translation.tolist(),
             "quaternion_xyzw": sq.quat.tolist(),
         })
+    # compute relative poses between adjacent superquadrics (i -> i+1)
+    relative_poses = []
+    for i in range(len(list_quadrics) - 1):
+        sq_a = list_quadrics[i]
+        sq_b = list_quadrics[i + 1]
+        # relative rotation: R_rel = R_b^T @ R_a
+        R_rel = sq_b.RotM.T @ sq_a.RotM
+        # relative translation: t_rel = R_b^T @ (t_a - t_b)
+        t_rel = sq_b.RotM.T @ (sq_a.translation - sq_b.translation)
+        r_rel = R.from_matrix(R_rel)
+        relative_poses.append({
+            "from": i,
+            "to": i + 1,
+            "relative_euler_ZYX": r_rel.as_euler('ZYX').tolist(),
+            "relative_quaternion_xyzw": r_rel.as_quat().tolist(),
+            "relative_translation": t_rel.tolist(),
+        })
+    output = {
+        "superquadrics": data,
+        "relative_poses": relative_poses,
+    }
     path = os.path.join(output_dir, "superquadrics.json")
     with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-    print(f"Saved {len(data)} superquadrics to {path}")
+        json.dump(output, f, indent=2)
+    print(f"Saved {len(data)} superquadrics and {len(relative_poses)} relative poses to {path}")

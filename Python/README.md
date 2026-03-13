@@ -29,6 +29,7 @@ We recommend to install the EMS package with `pip`.
 ### Run Demo
 
 To convert obj file to ply file
+
      python obj2ply.py path/to/obj.obj path/to/point_cloud.ply
 
 The demo script is `/Python/tests/test_script.py`.
