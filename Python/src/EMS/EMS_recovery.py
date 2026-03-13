@@ -7,7 +7,7 @@ from EMS.superquadrics import rotations, superquadric
 def EMS_recovery(
         point, OutlierRatio=0.1, MaxIterationEM=20,
         ToleranceEM=1e-3, RelativeToleranceEM=1e-1,
-        MaxOptiIterations=3, Sigma=0, MaxiSwitch=2,
+        MaxOptiIterations=3, Sigma: float = 0.0, MaxiSwitch=2,
         AdaptiveUpperBound=False, Rescale=True):
     # The function conducting probabilistic superquadric recovery.
     # Input: point - point cloud np array of N * 3
@@ -47,6 +47,9 @@ def EMS_recovery(
     ub = np.array([2.0, 2.0, upper, upper, upper, 2 * np.pi,
                   2 * np.pi, 2 * np.pi, upper, upper, upper])
 
+    # clamp initial guess to bounds
+    x0 = np.clip(x0, lb, ub)
+
     # calculate bounding volume of ourlier space
     V = BoundVolume(point_rot0)
 
@@ -62,7 +65,7 @@ def EMS_recovery(
     # initialize EMS
     x = x0
     cost = 0.0
-    num_switch = np.int(0)
+    num_switch = int(0)
     p = np.ones(point.shape[0])
 
     # ---------------------------------------EMS ALGORITHM--------------------------------------------

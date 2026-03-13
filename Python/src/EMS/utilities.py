@@ -1,4 +1,6 @@
-from mayavi import mlab
+import json
+import os
+import open3d as o3d
 import numpy as np
 import plyfile
 
@@ -8,17 +10,19 @@ def showSuperquadrics(x, threshold = 1e-2, num_limit = 10000, arclength = 0.02):
         x.shape[0] = 0.007
     if x.shape[1] < 0.007:
         x.shape[1] = 0.007
-    # sampling points in superellipse    
+    # sampling points in superellipse
     point_eta = uniformSampledSuperellipse(x.shape[0], [1, x.scale[2]], threshold, num_limit, arclength)
     point_omega = uniformSampledSuperellipse(x.shape[1], [x.scale[0], x.scale[1]], threshold, num_limit, arclength)
-    
-    # preallocate meshgrid
-    x_mesh = np.ones((np.shape(point_omega)[1], np.shape(point_eta)[1]))
-    y_mesh = np.ones((np.shape(point_omega)[1], np.shape(point_eta)[1]))
-    z_mesh = np.ones((np.shape(point_omega)[1], np.shape(point_eta)[1]))
 
-    for m in range(np.shape(point_omega)[1]):
-        for n in range(np.shape(point_eta)[1]):
+    # preallocate meshgrid
+    M = np.shape(point_omega)[1]
+    N = np.shape(point_eta)[1]
+    x_mesh = np.ones((M, N))
+    y_mesh = np.ones((M, N))
+    z_mesh = np.ones((M, N))
+
+    for m in range(M):
+        for n in range(N):
             point_temp = np.zeros(3)
             point_temp[0 : 2] = point_omega[:, m] * point_eta[0, n]
             point_temp[2] = point_eta[1, n]
@@ -27,9 +31,22 @@ def showSuperquadrics(x, threshold = 1e-2, num_limit = 10000, arclength = 0.02):
             x_mesh[m, n] = point_temp[0]
             y_mesh[m, n] = point_temp[1]
             z_mesh[m, n] = point_temp[2]
-    
-    mlab.view(azimuth=0.0, elevation=0.0, distance=2)
-    mlab.mesh(x_mesh, y_mesh, z_mesh, color=(0, 0, 1), opacity=0.8)
+
+    # Build triangle mesh from the grid
+    vertices = np.stack([x_mesh.ravel(), y_mesh.ravel(), z_mesh.ravel()], axis=1)
+    triangles = []
+    for m in range(M - 1):
+        for n in range(N - 1):
+            idx = m * N + n
+            triangles.append([idx, idx + 1, idx + N])
+            triangles.append([idx + 1, idx + N + 1, idx + N])
+
+    mesh = o3d.geometry.TriangleMesh()
+    mesh.vertices = o3d.utility.Vector3dVector(vertices)
+    mesh.triangles = o3d.utility.Vector3iVector(np.array(triangles))
+    mesh.compute_vertex_normals()
+    mesh.paint_uniform_color([0.0, 0.0, 1.0])
+    return mesh
 
 
 
@@ -108,11 +125,78 @@ def angle2points(theta, scale, epsilon):
 def read_ply(path_to_file):
     # read points from a .ply file and store in an nparray
     plydata = plyfile.PlyData.read(path_to_file)
-    pc = plydata['vertex'].data
-    return np.array([[x, y, z] for x, y, z in pc])
+    pc = plydata['vertex']
+    return np.column_stack((pc['x'], pc['y'], pc['z']))
 
 
-def showPoints(point, scale_factor=0.1):
-    
-    mlab.view(azimuth=0.0, elevation=0.0, distance=2)
-    mlab.points3d(point[:, 0], point[:, 1], point[:, 2], scale_factor=scale_factor, color=(1, 0, 0))
+def _sample_mesh_uniformly(mesh, num_points):
+    # sample points uniformly from an Open3D triangle mesh surface
+    pcd = mesh.sample_points_uniformly(number_of_points=num_points)
+    return np.asarray(pcd.points)
+
+
+def read_obj(path_to_file, num_points=2000):
+    # read a .obj mesh and uniformly sample points from its surface
+    mesh = o3d.io.read_triangle_mesh(path_to_file)
+    if mesh.is_empty():
+        raise ValueError(f"Failed to read OBJ file: {path_to_file}")
+    return _sample_mesh_uniformly(mesh, num_points)
+
+
+def read_glb(path_to_file, num_points=2000):
+    # read a .glb/.gltf mesh and uniformly sample points from its surface
+    import trimesh
+    scene = trimesh.load(path_to_file)
+    if isinstance(scene, trimesh.Scene):
+        tm = scene.to_mesh()
+    else:
+        tm = scene
+    if len(tm.vertices) == 0:
+        raise ValueError(f"Failed to read GLB file or no vertices found: {path_to_file}")
+    # convert to Open3D mesh for uniform sampling
+    mesh = o3d.geometry.TriangleMesh()
+    mesh.vertices = o3d.utility.Vector3dVector(np.asarray(tm.vertices))
+    mesh.triangles = o3d.utility.Vector3iVector(np.asarray(tm.faces))
+    return _sample_mesh_uniformly(mesh, num_points)
+
+
+def read_point_cloud(path_to_file, num_points=2000):
+    # auto-detect format by extension and read point cloud
+    ext = os.path.splitext(path_to_file)[1].lower()
+    if ext == '.ply':
+        return read_ply(path_to_file)
+    elif ext == '.obj':
+        return read_obj(path_to_file, num_points)
+    elif ext in ('.glb', '.gltf'):
+        return read_glb(path_to_file, num_points)
+    else:
+        raise ValueError(f"Unsupported file format '{ext}'. Supported: .ply, .obj, .glb, .gltf")
+
+
+def showPoints(point, color=[1.0, 0.0, 0.0]):
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(point[:, :3])
+    pcd.paint_uniform_color(color)
+    return pcd
+
+
+def visualize(geometries):
+    o3d.visualization.draw_geometries(geometries)
+
+
+def save_superquadrics(list_quadrics, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    data = []
+    for i, sq in enumerate(list_quadrics):
+        data.append({
+            "id": i,
+            "shape": sq.shape.tolist(),
+            "scale": sq.scale.tolist(),
+            "euler_ZYX": sq.euler.tolist(),
+            "translation": sq.translation.tolist(),
+            "quaternion_xyzw": sq.quat.tolist(),
+        })
+    path = os.path.join(output_dir, "superquadrics.json")
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"Saved {len(data)} superquadrics to {path}")

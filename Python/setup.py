@@ -17,8 +17,9 @@ setuptools.setup(
         'numpy',
         'scipy',
         'plyfile',
-        'mayavi',
-        'numba'
+        'open3d',
+        'numba',
+        'trimesh'
     ],
     classifiers=[
             "Programming Language :: Python :: 3",

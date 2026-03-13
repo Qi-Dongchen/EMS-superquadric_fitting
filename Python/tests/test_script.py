@@ -1,9 +1,8 @@
-from mayavi import mlab
 import argparse
 import sys
 import numpy as np
 
-from EMS.utilities import read_ply, showPoints
+from EMS.utilities import read_point_cloud, showPoints, visualize
 from EMS.EMS_recovery import EMS_recovery
 
 import timeit
@@ -11,12 +10,11 @@ import timeit
 def main(argv):
 
     parser = argparse.ArgumentParser(
-        description='Probabilistic Recovery of a superquadric surface from a point cloud file *.ply.')
+        description='Probabilistic Recovery of a superquadric surface from a point cloud file (*.ply, *.obj, or *.glb).')
 
     parser.add_argument(
         'path_to_data',
-        # default = '~/EMS-probabilistic_superquadric_fitting/MATLAB/example_scripts/data/noisy_pointCloud_example_1.ply',
-        help='Path to the directory containing the point cloud file *.ply.'
+        help='Path to the point cloud file (*.ply, *.obj, or *.glb).'
     )
 
     parser.add_argument(
@@ -60,15 +58,22 @@ def main(argv):
     parser.add_argument(
         '--pointSize',
         type = float,
-        default = 0.1,       
+        default = 0.1,
         help='Set the point size for plotting the point cloud. Default is 0.2.'
     )
 
+    parser.add_argument(
+        '--numPoints',
+        type = int,
+        default = 2000,
+        help='Number of points to uniformly sample from mesh surfaces (obj/glb). Default is 2000.'
+    )
+
     args = parser.parse_args(argv)
-    
+
     print('----------------------------------------------------')
     print('Loading point cloud from: ', args.path_to_data, '...')
-    point = read_ply(args.path_to_data)
+    point = read_point_cloud(args.path_to_data, num_points=args.numPoints)
     print('Point cloud loaded.')
     print('----------------------------------------------------')
 
@@ -94,10 +99,10 @@ def main(argv):
         print('----------------------------------------------------')
     
     if args.visualize is True:
-        fig = mlab.figure(size=(400, 400), bgcolor=(1, 1, 1))
-        sq_recovered.showSuperquadric(arclength = args.arcLength)
-        showPoints(point, scale_factor=args.pointSize)
-        mlab.show()
+        geometries = []
+        geometries.append(sq_recovered.showSuperquadric(arclength=args.arcLength))
+        geometries.append(showPoints(point))
+        visualize(geometries)
 
 
 if __name__ == "__main__":
